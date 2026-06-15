@@ -1,6 +1,6 @@
-# DPI Website Blocker
+# SCOUT
 
-> Block websites on your Windows device using Deep Packet Inspection principles. A full-stack web application with a Node.js backend, React frontend, and C++ DPI engine for traffic analysis.
+> Deep Packet Inspection website blocker for Windows. A full-stack web application with a Node.js backend, React frontend, and C++ DPI engine for traffic analysis.
 
 ---
 
@@ -9,32 +9,31 @@
 - [What This Project Does](#1-what-this-project-does)
 - [Features](#2-features)
 - [System Requirements](#3-system-requirements)
-- [Complete Setup Guide (Step-by-Step)](#4-complete-setup-guide-step-by-step)
+- [Complete Setup Guide](#4-complete-setup-guide)
 - [How to Use the Web Dashboard](#5-how-to-use-the-web-dashboard)
 - [How Blocking Works](#6-how-blocking-works)
-- [DPI Analysis (PCAP Upload)](#7-dpi-analysis-pcap-upload)
-- [API Reference](#8-api-reference)
-- [Project Structure](#9-project-structure)
-- [Architecture](#10-architecture)
-- [Production Deployment](#11-production-deployment)
+- [Rule Profiles](#7-rule-profiles)
+- [DPI Analysis (PCAP Upload)](#8-dpi-analysis-pcap-upload)
+- [API Reference](#9-api-reference)
+- [Project Structure](#10-project-structure)
+- [Architecture](#11-architecture)
 - [Troubleshooting](#12-troubleshooting)
-- [Technical Background](#13-technical-background)
 
 ---
 
 ## 1. What This Project Does
 
-This is a **full-stack website blocker** for Windows. It gives you a web dashboard to manage which websites, IPs, and ports are blocked on your device. It works in two ways:
+**SCOUT** is a full-stack website blocker for Windows. It gives you a web dashboard to manage which websites, IPs, and ports are blocked on your device. It works in two ways:
 
-1. **Live Blocking** — Adds entries to the Windows hosts file and Windows Firewall rules in real-time from the web UI
-2. **DPI Analysis** — Upload `.pcap` network captures and the C++ engine inspects TLS SNI, HTTP Host headers, and DNS queries to classify traffic
+1. **Live Blocking** — Adds entries to the Windows hosts file and Windows Firewall rules in real-time from the web UI. Also blocks DNS-over-HTTPS resolvers to prevent browser bypass.
+2. **DPI Analysis** — Upload `.pcap` network captures and the C++ engine inspects TLS SNI, HTTP Host headers, and DNS queries to classify traffic.
 
 ```
 ┌──────────────────────────────────────────────────────┐
 │  Web Dashboard (React)                               │
 │  http://localhost:5173                                │
 │                                                      │
-│  [Dashboard] [Rules] [Analyzer] [Log] [Settings]     │
+│  [Dashboard] [Rules] [Profiles] [Analyzer] [Log]     │
 └────────────────────┬─────────────────────────────────┘
                      │  API calls
                      ▼
@@ -42,16 +41,18 @@ This is a **full-stack website blocker** for Windows. It gives you a web dashboa
 │  Backend (Node.js + Express)                         │
 │  http://localhost:3001                                │
 │                                                      │
-│  /api/rules    → Manage blocking rules               │
-│  /api/status   → System health check                 │
-│  /api/upload   → PCAP analysis                       │
-│  /api/logs     → Block history                       │
+│  /api/rules     → Manage blocking rules              │
+│  /api/profiles  → Rule profiles management           │
+│  /api/status    → System health check                │
+│  /api/upload    → PCAP analysis                      │
+│  /api/logs      → Block history                      │
 └────────┬─────────────────┬───────────────────────────┘
          │                 │
          ▼                 ▼
 ┌────────────────┐  ┌──────────────────────────────┐
 │ Hosts File     │  │ C++ DPI Engine               │
 │ + Firewall     │  │ (PCAP analysis only)         │
+│ + DoH Block    │  │                              │
 └────────────────┘  └──────────────────────────────┘
 ```
 
@@ -64,12 +65,22 @@ This is a **full-stack website blocker** for Windows. It gives you a web dashboa
 | **Domain Blocking** | Block websites via Windows hosts file — instant, system-wide |
 | **IP Blocking** | Block IPs via Windows Firewall outbound rules |
 | **Port Blocking** | Block ports (TCP + UDP) via Windows Firewall |
+| **Dual-Layer Blocking** | Hosts file + Firewall IP rules for instant re-blocking |
+| **DoH Blocking** | Blocks DNS-over-HTTPS resolvers (Cloudflare, Google, Quad9, OpenDNS) to prevent browser bypass |
+| **Rule Profiles** | Save, activate, and deactivate blocking presets (Work Mode, Gaming Mode, Kid Safe, Minimal) |
 | **Preset Apps** | One-click block for YouTube, TikTok, Facebook, Instagram, Netflix, Spotify, Discord, Telegram, Zoom, Reddit, Twitch, Twitter/X |
 | **Auto-subdomain** | Blocking `youtube.com` automatically blocks `www.youtube.com` too |
 | **Toggle Rules** | Enable/disable rules without deleting them |
 | **DPI Analysis** | Upload `.pcap` files, inspect TLS SNI, classify 20+ apps |
-| **Block Log** | Full history of all blocking actions |
+| **Block Log** | Full history of all blocking actions with search and pagination |
 | **Real-time Status** | Dashboard shows blocked domains, firewall rules, admin status |
+| **Dark/Light Theme** | Toggle between dark and light mode with smooth transitions |
+| **Modern UI** | Geist Sans/Mono fonts, glass morphism design, responsive layout |
+| **Toast Notifications** | Floating success/error/info toasts for all actions |
+| **Confirmation Dialogs** | Prevent accidental deletions with modal confirmations |
+| **Live Auto-refresh** | Dashboard auto-refreshes every 5 seconds |
+| **Search & Filter** | Search rules, logs, and filter by type |
+| **Auto Admin Elevation** | `start.bat` auto-requests UAC elevation for full functionality |
 
 ---
 
@@ -86,11 +97,10 @@ This is a **full-stack website blocker** for Windows. It gives you a web dashboa
 | Component | Optional |
 |-----------|----------|
 | **C++ compiler** | Only if you want to build the DPI engine for PCAP analysis |
-| **MongoDB** | Only for persistent report storage |
 
 ---
 
-## 4. Complete Setup Guide (Step-by-Step)
+## 4. Complete Setup Guide
 
 ### Step 1: Install Node.js
 
@@ -100,119 +110,59 @@ node --version
 npm --version
 ```
 
-### Step 2: Open PowerShell as Administrator
-
-> **This is critical.** Without admin, the hosts file and firewall cannot be modified.
-
-1. Press `Win` key
-2. Type `powershell`
-3. Right-click **Windows PowerShell** → **Run as Administrator**
-4. Click **Yes** on the UAC prompt
-
-### Step 3: Navigate to the Project
+### Step 2: Navigate to the Project
 
 ```powershell
 cd "C:\Projects Placements\DPI-Modified\Packet_analyzer"
 ```
 
-### Step 4: Install Backend Dependencies
+### Step 3: Install Dependencies
 
 ```powershell
-cd backend
-npm install
-cd ..
+cd backend && npm install && cd ..
+cd frontend && npm install && cd ..
 ```
 
-### Step 5: Install Frontend Dependencies
+### Step 4: Start the Application
 
-```powershell
-cd frontend
-npm install
-cd ..
+**Easiest method** — double-click `start.bat` (it auto-requests admin privileges):
+
+```
+Right-click start.bat → Run as administrator
 ```
 
-### Step 6: Build the Frontend
+Or if the UAC prompt appears, click **Yes**.
+
+**Manual method** — two terminals:
 
 ```powershell
-cd frontend
-npm run build
-cd ..
-```
-
-### Step 7: Start the Backend (Admin Terminal)
-
-In the **same Admin PowerShell** you opened in Step 2:
-
-```powershell
-cd backend
+# Terminal 1 (Admin):
+cd "C:\Projects Placements\DPI-Modified\Packet_analyzer\backend"
 node src/server.js
-```
 
-You should see:
-```
-DPI Blocker backend running on http://localhost:3001
-Blocking API: /api/rules, /api/status, /api/logs
-Analysis API: /api/upload, /api/reports
-```
-
-**Keep this terminal open.** The backend must stay running.
-
-### Step 8: Start the Frontend (Separate Terminal)
-
-Open a **second PowerShell** (regular — does not need to be Admin):
-
-```powershell
+# Terminal 2 (Regular):
 cd "C:\Projects Placements\DPI-Modified\Packet_analyzer\frontend"
 npm run dev
 ```
 
-You should see:
-```
-VITE v6.x.x  ready in xxx ms
-➜  Local:   http://localhost:5173/
-```
-
-### Step 9: Open the Dashboard
+### Step 5: Open the Dashboard
 
 Open your browser and go to **http://localhost:5173**
 
-You should see the DPI Blocker dashboard with a sidebar navigation on the left.
+### Step 6: Block Your First Website
 
-### Step 10: Block Your First Website
+1. Click **Rules** in the sidebar
+2. Type `youtube.com` in the domain field and press Enter
+3. Or click a preset button (YouTube, Facebook, etc.)
 
-1. Click **Blocking Rules** in the sidebar
-2. Click **Block YouTube** (or type `youtube.com` in the domain field and press Enter)
-3. You should see a green success message
+### Step 7: Verify the Block
 
-### Step 11: Flush DNS Cache
-
-Open a **third PowerShell** (Admin) and run:
-
-```powershell
-ipconfig /flushdns
-```
-
-### Step 12: Verify the Block
-
-Test in PowerShell:
-
-```powershell
-Invoke-WebRequest -Uri "https://www.youtube.com" -TimeoutSec 5 -UseBasicParsing
-```
-
-If the block is working, you will see a red error like:
-```
-Invoke-WebRequest : The remote name could not be resolved
-```
-
-### Step 13: Test in Your Browser
-
-1. **Close ALL browser windows completely** (Chrome, Edge, Firefox — all of them)
+1. **Close ALL browser windows completely**
 2. Reopen a browser
 3. Go to `youtube.com`
-4. You should see **"This site can't be reached"** or similar error
+4. You should see **"This site can't be reached"**
 
-> If YouTube still opens, see [Troubleshooting: Blocking not working](#blocking-not-working-websites-still-open).
+> **Important:** If the site still opens after re-blocking, it's due to browser DNS caching. SCOUT automatically blocks DNS-over-HTTPS resolvers to prevent this. If issues persist, disable "Use secure DNS" in Chrome at `chrome://settings/security`.
 
 ---
 
@@ -220,14 +170,16 @@ Invoke-WebRequest : The remote name could not be resolved
 
 ### Dashboard (Home)
 
-Shows real-time system status:
+Shows real-time system status with auto-refresh every 5 seconds:
 
 | Card | Meaning |
 |------|---------|
 | Domains Blocked | Number of domains in the hosts file |
 | Active Rules | Enabled blocking rules |
 | Firewall Rules | Windows Firewall rules created |
-| Admin Status | Green = running as admin, Yellow = limited |
+| Admin Status | Running as admin or limited |
+
+If not running as admin, a warning banner is displayed with instructions to restart.
 
 ### Blocking Rules Page
 
@@ -236,8 +188,10 @@ Shows real-time system status:
 **Custom Domain Block:**
 1. Type a domain (e.g., `reddit.com`)
 2. Press Enter
-3. Both `reddit.com` and `www.reddit.com` are added to hosts file
+3. Both `reddit.com` and `www.reddit.com` are blocked automatically
 4. DNS cache is flushed automatically
+5. Domain IPs are resolved and blocked via firewall
+6. DoH resolvers are blocked to prevent browser bypass
 
 **IP Block:**
 1. Type an IP (e.g., `192.168.1.50`)
@@ -252,6 +206,26 @@ Shows real-time system status:
 **Managing Rules:**
 - Toggle icon → Enable/disable a rule
 - Trash icon → Delete a rule and unblock it
+- Search bar → Filter rules by value
+
+### Rule Profiles Page
+
+Save and switch between blocking configurations:
+
+- **Create Profile** — Select rules to include, give it a name
+- **Save Current** — Save your current active rules as a new profile
+- **Activate** — Applies the profile's rules (disables all previous rules first)
+- **Deactivate** — Removes the profile's rules from the system
+
+Built-in profiles:
+| Profile | Description |
+|---------|-------------|
+| Work Mode | Blocks social media and distractions |
+| Gaming Mode | Blocks background updaters |
+| Kid Safe | Blocks social media for children |
+| Minimal | Only blocks known ad trackers |
+
+Active profile is indicated with a green border and "Active" badge.
 
 ### DPI Analyzer Page
 
@@ -262,47 +236,60 @@ Shows real-time system status:
 
 ### Block Log Page
 
-Chronological history of all blocking actions. Filter by type (domain, IP, port).
+Chronological history of all blocking actions. Features:
+- Search by domain/IP/port
+- Filter by action type
+- Pagination for large logs
 
 ### Settings Page
 
-System status, admin instructions, and how blocking works.
+System status display:
+- Administrator privileges status
+- Hosts file access
+- Windows Firewall status
+- Number of blocked domains and firewall rules
+- How blocking works documentation
+- Run as Administrator instructions
 
 ---
 
 ## 6. How Blocking Works
 
-### Domain Blocking (Hosts File)
+### Domain Blocking (Hosts File + Firewall + DoH Block)
 
-When you block `youtube.com`:
+When you block `youtube.com`, SCOUT applies three layers:
 
 ```
-1. Backend writes to C:\Windows\System32\drivers\etc\hosts:
+Layer 1 — Hosts File:
+  127.0.0.1 youtube.com # DPI-BLOCKER
+  ::1 youtube.com # DPI-BLOCKER
+  127.0.0.1 www.youtube.com # DPI-BLOCKER
+  ::1 www.youtube.com # DPI-BLOCKER
 
-   127.0.0.1 youtube.com # DPI-BLOCKER
-   ::1 youtube.com # DPI-BLOCKER
-   127.0.0.1 www.youtube.com # DPI-BLOCKER
-   ::1 www.youtube.com # DPI-BLOCKER
+Layer 2 — Firewall IP Rules:
+  Resolves youtube.com → 192.178.211.190, etc.
+  netsh advfirewall firewall add rule
+    name="DPI-Block-Domain-youtube_com-192_178_211_190"
+    dir=out remoteip="192.178.211.190" action=block
 
-2. DNS cache is flushed (ipconfig /flushdns)
-
-3. Browser tries to visit youtube.com:
-   → OS checks hosts file → finds 127.0.0.1
-   → Connects to 127.0.0.1 → no server running there → connection fails
-   → Browser shows "This site can't be reached"
+Layer 3 — DoH Resolver Blocking:
+  Blocks Cloudflare (1.1.1.1, 1.0.0.1)
+  Blocks Google (8.8.8.8, 8.8.4.4)
+  Blocks Quad9 (9.9.9.9, 149.112.112.112)
+  Blocks OpenDNS (208.67.222.222, 208.67.220.220)
+  → Forces browsers to use system DNS → hosts file → blocked
 ```
 
-> **Key detail:** Both `youtube.com` AND `www.youtube.com` are blocked automatically because browsers typically visit `www.youtube.com` which resolves to different IPs than the bare domain.
+**Why three layers?**
+- Hosts file blocks DNS resolution
+- Firewall blocks the actual IP connection (prevents cached DNS bypass)
+- DoH blocking prevents browsers from bypassing the hosts file entirely
 
 ### IP/Port Blocking (Windows Firewall)
 
-When you block IP `192.168.1.50`:
-
-```
+```powershell
 netsh advfirewall firewall add rule name="DPI-Block-IP-192.168.1.50" dir=out remoteip="192.168.1.50" action=block
 ```
-
-This creates a Windows Firewall outbound rule that drops all packets to that IP.
 
 ### Why Admin Rights Are Needed
 
@@ -310,28 +297,54 @@ This creates a Windows Firewall outbound rule that drops all packets to that IP.
 |-----------|----------|-----------|
 | Domain blocking | `C:\Windows\System32\drivers\etc\hosts` | Protected by Windows |
 | IP/Port blocking | `netsh advfirewall` | Requires elevation |
-| DNS flush | `ipconfig /flushdns` | Requires elevation |
+| DoH blocking | `netsh advfirewall` | Requires elevation |
+| DNS flush | `ipconfig /flushdns` | Works without admin |
 
-**Without admin:** The web UI works but rules are NOT applied to the system.
+**Without admin:** Hosts file blocking works but firewall rules (IP blocking, DoH blocking) are not applied. Re-blocking recently-unblocked sites may take 10-20 minutes due to browser DNS caching.
 
 ---
 
-## 7. DPI Analysis (PCAP Upload)
+## 7. Rule Profiles
+
+Profiles let you save and switch between different blocking configurations.
+
+### How Profiles Work
+
+**Activating a profile:**
+1. Disables all currently active rules
+2. Enables all rules defined in the profile
+3. Adds new rules if they don't exist yet
+4. Tracks the active profile (green badge)
+
+**Deactivating a profile:**
+1. Disables all rules that were part of the profile
+2. Clears the active profile state
+
+### Built-in Profiles
+
+| Profile | Rules |
+|---------|-------|
+| **Work Mode** | youtube.com, facebook.com, tiktok.com, instagram.com, x.com, reddit.com, netflix.com |
+| **Gaming Mode** | windowsupdate.microsoft.com, update.microsoft.com, download.microsoft.com, cdn.steampowered.com, store.epicgames.com |
+| **Kid Safe** | youtube.com, tiktok.com, instagram.com, snapchat.com, discord.com, twitch.tv |
+| **Minimal** | googlesyndication.com, doubleclick.net |
+
+### Custom Profiles
+
+1. Go to the **Profiles** page
+2. Click **Create Profile**
+3. Name it and select which existing rules to include
+4. Click **Create**
+
+Or click **Save Current** to save your current active rules as a new profile.
+
+---
+
+## 8. DPI Analysis (PCAP Upload)
 
 ### What is Deep Packet Inspection?
 
 DPI looks inside network packets. Even with HTTPS encryption, the first packet (TLS Client Hello) contains the domain name in plaintext via the **Server Name Indication (SNI)** field.
-
-```
-TLS Client Hello (visible in plaintext):
-┌──────────────────────────────────────┐
-│ Content Type: 0x16 (Handshake)       │
-│ Handshake Type: 0x01 (Client Hello)  │
-│ ...                                  │
-│ Extensions:                          │
-│   SNI: "www.youtube.com"  ← EXTRACT │
-└──────────────────────────────────────┘
-```
 
 ### What the Engine Detects
 
@@ -357,14 +370,11 @@ g++ -std=c++17 -pthread -O2 -I include -o dpi_engine.exe src/dpi_mt.cpp src/pcap
 
 # With blocking rules
 .\dpi_engine.exe input.pcap output.pcap --block-app YouTube --block-domain facebook
-
-# Generate test data
-python generate_test_pcap.py
 ```
 
 ---
 
-## 8. API Reference
+## 9. API Reference
 
 All endpoints at `http://localhost:3001/api/`.
 
@@ -383,6 +393,20 @@ All endpoints at `http://localhost:3001/api/`.
 | POST | `/api/rules` | `{type, value, category}` | Add rule (type: domain/ip/port) |
 | PUT | `/api/rules/:id` | `{enabled: bool}` | Toggle rule |
 | DELETE | `/api/rules/:id` | — | Delete rule and unblock |
+
+### Profiles
+
+| Method | Endpoint | Body | Description |
+|--------|----------|------|-------------|
+| GET | `/api/profiles` | — | List all profiles |
+| GET | `/api/profiles/active` | — | Get currently active profile |
+| GET | `/api/profiles/:id` | — | Get specific profile |
+| POST | `/api/profiles` | `{name, description, rules}` | Create profile |
+| PUT | `/api/profiles/:id` | `{name, description}` | Update profile |
+| DELETE | `/api/profiles/:id` | — | Delete profile |
+| POST | `/api/profiles/:id/activate` | — | Activate profile |
+| POST | `/api/profiles/:id/deactivate` | — | Deactivate profile |
+| POST | `/api/profiles/save-current` | `{name, description}` | Save current rules as profile |
 
 ### Logs
 
@@ -406,88 +430,88 @@ $body = '{"type":"domain","value":"tiktok.com"}'
 Invoke-RestMethod -Uri "http://localhost:3001/api/rules" -Method Post -Headers $headers -Body $body
 ```
 
+### Example: Activate a Profile
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3001/api/profiles/builtin-work/activate" -Method Post
+```
+
+### Example: Deactivate a Profile
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3001/api/profiles/builtin-work/deactivate" -Method Post
+```
+
 ---
 
-## 9. Project Structure
+## 10. Project Structure
 
 ```
 Packet_analyzer/
 ├── backend/                        # Node.js Express API server
-│   ├── package.json                # express, multer, cors, dotenv
+│   ├── package.json
 │   ├── .env                        # PORT=3001, DPI_BINARY, etc.
 │   ├── data/
 │   │   ├── rules.json              # All blocking rules (JSON)
-│   │   └── block-log.json          # Block history (JSON)
+│   │   ├── block-log.json          # Block history (JSON)
+│   │   └── profiles.json           # Rule profiles (JSON)
 │   ├── uploads/                    # Uploaded PCAP files
 │   └── src/
 │       ├── server.js               # Express server + all routes
 │       ├── routes/
-│       │   └── analyze.js          # PCAP upload + analysis
+│       │   ├── analyze.js          # PCAP upload + analysis
+│       │   ├── profiles.js         # Profile CRUD + activate/deactivate
+│       │   └── auth.js             # Auth routes (unused)
 │       └── services/
-│           ├── blocker.js          # Hosts file + Windows Firewall mgmt
+│           ├── blocker.js          # Hosts + Firewall + DoH blocking
 │           ├── database.js         # JSON file CRUD
+│           ├── profileStore.js     # Profile JSON CRUD + active tracking
 │           ├── dpiRunner.js        # Spawns C++ DPI engine
-│           └── reportService.js    # MongoDB report ops
+│           └── reportService.js    # Report ops
 │
 ├── frontend/                       # React 19 web UI
-│   ├── package.json                # react, recharts, lucide-react
-│   ├── vite.config.js              # Vite + Tailwind + API proxy
-│   ├── dist/                       # Production build output
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── public/
+│   │   └── logo.png                # App logo
 │   └── src/
-│       ├── main.jsx                # React entry
-│       ├── App.jsx                 # Layout with sidebar + page routing
-│       ├── index.css               # Tailwind CSS
+│       ├── main.jsx
+│       ├── App.jsx                 # Routes: /, /dashboard, /profiles
+│       ├── index.css               # Design system + theme variables
 │       ├── api/
 │       │   └── client.js           # All API calls
+│       ├── context/
+│       │   └── ThemeContext.jsx     # Dark/light theme + tick sound
 │       ├── components/
-│       │   ├── Sidebar.jsx         # Navigation sidebar
+│       │   ├── Sidebar.jsx         # Navigation with logo
+│       │   ├── Navbar.jsx          # Landing page nav
+│       │   ├── Footer.jsx          # Landing page footer
 │       │   ├── MetricCard.jsx      # Stat card component
 │       │   ├── UploadZone.jsx      # Drag-drop file upload
-│       │   └── PacketChart.jsx     # Pie + bar charts
+│       │   ├── PacketChart.jsx     # Pie + bar charts
+│       │   ├── Toast.jsx           # Toast notification system
+│       │   ├── ConfirmDialog.jsx   # Modal confirmations
+│       │   └── Skeleton.jsx        # Loading skeletons
 │       └── pages/
-│           ├── DashboardPage.jsx   # Status dashboard
-│           ├── RulesPage.jsx       # Rule management
+│           ├── LandingPage.jsx     # Hero + features + CTA
+│           ├── DashboardPage.jsx   # Status dashboard (auto-refresh)
+│           ├── RulesPage.jsx       # Rule management + presets
+│           ├── ProfilesPage.jsx    # Profile management
 │           ├── AnalyzerPage.jsx    # DPI PCAP analysis
 │           ├── LogPage.jsx         # Block history
-│           └── SettingsPage.jsx    # System status
+│           └── SettingsPage.jsx    # System status + docs
 │
 ├── include/                        # C++ DPI engine headers
-│   ├── types.h                     # FiveTuple, AppType, Connection
-│   ├── pcap_reader.h               # PCAP file reading
-│   ├── packet_parser.h             # Ethernet/IP/TCP/UDP parsing
-│   ├── sni_extractor.h             # TLS SNI + HTTP Host extraction
-│   ├── rule_manager.h              # Thread-safe blocking rules
-│   ├── connection_tracker.h        # Per-flow state tracking
-│   ├── fast_path.h                 # Fast Path processor thread
-│   ├── load_balancer.h             # Load Balancer thread
-│   ├── dpi_engine.h                # Main DPI orchestrator
-│   └── thread_safe_queue.h         # Thread-safe queue
-│
 ├── src/                            # C++ DPI engine implementation
-│   ├── dpi_mt.cpp                  # Multi-threaded engine (main)
-│   ├── pcap_reader.cpp             # PCAP reader
-│   ├── packet_parser.cpp           # Protocol parser
-│   ├── sni_extractor.cpp           # SNI/Host/DNS extraction
-│   ├── types.cpp                   # App type classification
-│   ├── rule_manager.cpp            # Rule management
-│   ├── connection_tracker.cpp      # Flow tracking
-│   ├── fast_path.cpp               # FP thread
-│   ├── load_balancer.cpp           # LB thread
-│   └── main_working.cpp            # Simple single-threaded version
-│
 ├── dpi_engine.exe                  # Compiled multi-threaded engine
-├── dpi_daemon.exe                  # Live blocking daemon
-├── generate_test_pcap.py           # Creates test_dpi.pcap
-├── test_dpi.pcap                   # Sample capture (16 TLS, 2 HTTP, 4 DNS)
-├── start.bat                       # Launch both frontend + backend
-├── start-backend.bat               # Launch backend only
-├── start-frontend.bat              # Launch frontend only
-└── README.md                       # This file
+├── start.bat                       # Auto-elevating launcher
+├── restart_backend.bat             # Backend restart helper
+└── README.md
 ```
 
 ---
 
-## 10. Architecture
+## 11. Architecture
 
 ### System Architecture
 
@@ -498,8 +522,10 @@ Packet_analyzer/
 │                                                                    │
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │ React 19 + Tailwind CSS 4 + Recharts + Lucide Icons         │  │
+│  │ Geist Sans + Geist Mono fonts                                │  │
+│  │ Dark/Light theme + Glass morphism design                     │  │
 │  │                                                              │  │
-│  │ Sidebar: Dashboard │ Rules │ Analyzer │ Log │ Settings       │  │
+│  │ Sidebar: Dashboard │ Rules │ Profiles │ Analyzer │ Log │ ... │  │
 │  └──────────────────────────┬───────────────────────────────────┘  │
 └─────────────────────────────┼──────────────────────────────────────┘
                               │  /api/* (fetch calls)
@@ -514,51 +540,49 @@ Packet_analyzer/
 │                   Express Server (port 3001)                       │
 │                                                                    │
 │  Routes:                                                           │
-│  ├── GET  /api/health       → Health check                        │
-│  ├── GET  /api/status       → System status (admin, hosts, FW)   │
-│  ├── GET  /api/rules        → List blocking rules                 │
-│  ├── POST /api/rules        → Add rule → applies to system        │
-│  ├── PUT  /api/rules/:id    → Toggle rule on/off                  │
-│  ├── DELETE /api/rules/:id  → Delete rule → removes from system   │
-│  ├── GET  /api/logs         → Block history                       │
-│  ├── POST /api/upload       → Upload PCAP → spawn C++ engine      │
-│  ├── GET  /api/reports      → List analysis reports               │
-│  └── GET  /api/reports/:id  → Get specific report                 │
+│  ├── GET  /api/health          → Health check                     │
+│  ├── GET  /api/status          → System status                    │
+│  ├── GET  /api/rules           → List blocking rules              │
+│  ├── POST /api/rules           → Add rule → applies to system     │
+│  ├── PUT  /api/rules/:id       → Toggle rule on/off               │
+│  ├── DELETE /api/rules/:id     → Delete rule → removes from sys   │
+│  ├── GET  /api/profiles        → List profiles                    │
+│  ├── GET  /api/profiles/active → Get active profile               │
+│  ├── POST /api/profiles/:id/activate   → Activate profile         │
+│  ├── POST /api/profiles/:id/deactivate → Deactivate profile       │
+│  ├── POST /api/profiles/save-current   → Save current as profile  │
+│  ├── GET  /api/logs            → Block history                    │
+│  ├── POST /api/upload          → Upload PCAP → spawn C++ engine   │
+│  ├── GET  /api/reports         → List analysis reports            │
+│  └── GET  /api/reports/:id     → Get specific report              │
 │                                                                    │
 │  Services:                                                         │
 │  ┌─────────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │ blocker.js      │  │ database.js  │  │ dpiRunner.js         │  │
+│  │ blocker.js      │  │ database.js  │  │ profileStore.js      │  │
 │  │                 │  │              │  │                      │  │
-│  │ • blockDomain() │  │ • getRules() │  │ • runDpiAnalysis()   │  │
-│  │ • unblockDomain│  │ • addRule()  │  │ • Spawns dpi_engine  │  │
-│  │ • blockIp()    │  │ • update()   │  │ • Parses JSON output │  │
-│  │ • unblockIp()  │  │ • delete()   │  │                      │  │
-│  │ • blockPort()  │  │ • getLogs()  │  │                      │  │
-│  │ • unblockPort()│  │              │  │                      │  │
-│  │ • getStatus()  │  │ Storage:     │  │                      │  │
-│  │                │  │ data/*.json  │  │                      │  │
-│  └───────┬────────┘  └──────────────┘  └──────────┬───────────┘  │
-└──────────┼─────────────────────────────────────────┼──────────────┘
-           │                                         │
-           ▼                                         ▼
-┌──────────────────────────┐          ┌──────────────────────────────┐
-│ Windows System            │          │ C++ DPI Engine (dpi_engine)  │
-│                           │          │                              │
-│ Hosts File:               │          │ Input: .pcap file            │
-│ C:\Windows\...\hosts      │          │ Output: .pcap + JSON report  │
-│                           │          │                              │
-│ 127.0.0.1 youtube.com     │          │ Pipeline:                    │
-│ 127.0.0.1 www.youtube.com │          │ Reader → Load Balancers      │
-│ ::1 youtube.com           │          │   → Fast Paths (DPI)         │
-│ ::1 www.youtube.com       │          │   → Output Writer            │
-│                           │          │                              │
-│ Windows Firewall:         │          │ Features:                    │
-│ netsh advfirewall         │          │ • TLS SNI extraction         │
-│                           │          │ • HTTP Host extraction       │
-│ Outbound rules:           │          │ • DNS query extraction       │
-│ • Block IP x.x.x.x       │          │ • QUIC detection             │
-│ • Block port 443 (TCP+UDP)│          │ • 22+ app classifications    │
-└──────────────────────────┘          └──────────────────────────────┘
+│  │ • blockDomain() │  │ • getRules() │  │ • getProfiles()      │  │
+│  │ • unblockDomain │  │ • addRule()  │  │ • createProfile()    │  │
+│  │ • blockIp()     │  │ • update()   │  │ • activateProfile()  │  │
+│  │ • blockPort()   │  │ • delete()   │  │ • deactivateProfile()│  │
+│  │ • _blockDoH()   │  │ • getLogs()  │  │ • getActiveProfile() │  │
+│  │ • _resolveIps() │  │              │  │                      │  │
+│  └───────┬────────┘  └──────────────┘  └──────────────────────┘  │
+└──────────┼─────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ Windows System                                                      │
+│                                                                      │
+│ Hosts File:                                                         │
+│ C:\Windows\...\hosts                                                │
+│ 127.0.0.1 youtube.com # DPI-BLOCKER                                 │
+│ 127.0.0.1 www.youtube.com # DPI-BLOCKER                             │
+│                                                                      │
+│ Windows Firewall:                                                   │
+│ DPI-Block-Domain-youtube_com-192_178_211_190 → Block                │
+│ DPI-Block-DoH-Cloudflare-1 (1.1.1.1) → Block                       │
+│ DPI-Block-DoH-Google-1 (8.8.8.8) → Block                           │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Domain Blocking Flow
@@ -577,139 +601,22 @@ Backend server.js:
          ▼
 Blocker service (blocker.js):
   1. _getDomainVariants("youtube.com") → ["youtube.com", "www.youtube.com"]
-  2. For each variant:
-     - Read current hosts file
-     - Check if entry already exists
-     - If not, append:
-         127.0.0.1 youtube.com # DPI-BLOCKER
-         ::1 youtube.com # DPI-BLOCKER
-         127.0.0.1 www.youtube.com # DPI-BLOCKER
-         ::1 www.youtube.com # DPI-BLOCKER
-  3. Run: ipconfig /flushdns
-  4. Return { success: true }
+  2. Add hosts file entries:
+     127.0.0.1 youtube.com # DPI-BLOCKER
+     ::1 youtube.com # DPI-BLOCKER
+     127.0.0.1 www.youtube.com # DPI-BLOCKER
+     ::1 www.youtube.com # DPI-BLOCKER
+  3. Flush DNS + ARP + NetBIOS caches
+  4. _resolveDomainIps("youtube.com") → ["192.178.211.190", ...]
+  5. Create firewall rules for each resolved IP
+  6. _blockDoH() → Block Cloudflare/Google/Quad9/OpenDNS resolvers
+  7. Return { success: true, firewall: true, resolvedIps: [...] }
          │
          ▼
-addLog({ action: "add", type: "domain", value: "youtube.com", status: "applied" })
-         │
-         ▼
-Frontend: Shows green success message "Blocked youtube.com"
-         │
-         ▼
-DNS resolution for youtube.com → 127.0.0.1
-DNS resolution for www.youtube.com → 127.0.0.1
-Browser connects to 127.0.0.1 → no server → "This site can't be reached"
-```
-
-### DPI Analysis Flow
-
-```
-User drops .pcap file in AnalyzerPage
-         │
-         ▼
-Frontend: POST /api/upload (multipart: pcap file + test rules)
-         │
-         ▼
-Backend routes/analyze.js:
-  1. Save uploaded file to uploads/
-  2. Build command: dpi_engine.exe input.pcap output.pcap --json
-     [--block-app YouTube] [--block-domain facebook] ...
-  3. Spawn C++ process, read stdout JSON
-  4. Save report to MongoDB (if available)
-         │
-         ▼
-C++ DPI Engine (dpi_mt.cpp):
-  Reader Thread
-    → reads each packet from .pcap
-    → hashes 5-tuple → dispatches to Load Balancer
-  Load Balancer Threads (2)
-    → re-hashes → dispatches to Fast Path
-  Fast Path Threads (4)
-    → Parses Ethernet/IP/TCP/UDP headers
-    → Extracts TLS SNI / HTTP Host / DNS query
-    → Classifies app type (YouTube, Facebook, etc.)
-    → Checks blocking rules
-    → Marks packet as FORWARD or DROP
-  Output Writer
-    → Writes forwarded packets to output .pcap
-  JSON Report
-    → Total packets, forwarded, dropped
-    → Protocol breakdown (TCP/UDP/other)
-    → Application breakdown (YouTube 15%, Google 10%, ...)
-    → Detected domains list
-    → Blocked connections list
-         │
-         ▼
-Frontend: Displays dashboard with charts, tables, metrics
-```
-
----
-
-## 11. Production Deployment
-
-### Option A: Single Server (Backend Serves Frontend)
-
-1. Build the frontend:
-   ```powershell
-   cd frontend && npm run build
-   ```
-
-2. Add static file serving to `backend/src/server.js`:
-   ```javascript
-   import path from 'path';
-   import { fileURLToPath } from 'url';
-   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-   app.use(express.static(path.join(__dirname, '..', '..', 'frontend', 'dist')));
-   app.get('*', (req, res) => {
-     res.sendFile(path.join(__dirname, '..', '..', 'frontend', 'dist', 'index.html'));
-   });
-   ```
-
-3. Run only the backend:
-   ```powershell
-   cd backend && node src/server.js
-   ```
-
-4. Access at **http://localhost:3001**
-
-### Option B: PM2 Process Manager
-
-```powershell
-npm install -g pm2
-
-cd backend
-pm2 start src/server.js --name dpi-blocker
-pm2 save
-pm2 startup
-```
-
-### Option C: Windows Service (NSSM)
-
-```powershell
-winget install nssm
-
-nssm install DPIBlocker "C:\Program Files\nodejs\node.exe" "C:\path\to\backend\src\server.js"
-nssm set DPIBlocker AppDirectory "C:\path\to\backend"
-nssm set DPIBlocker Start SERVICE_AUTO_START
-nssm start DPIBlocker
-```
-
-### Option D: Nginx Reverse Proxy
-
-```nginx
-server {
-    listen 80;
-    server_name dpi-blocker.local;
-
-    location /api/ {
-        proxy_pass http://localhost:3001;
-    }
-
-    location / {
-        root C:\path\to\frontend\dist;
-        try_files $uri $uri/ /index.html;
-    }
-}
+Browser tries to visit youtube.com:
+  → DoH blocked → falls back to system DNS
+  → System DNS checks hosts file → finds 127.0.0.1
+  → Connects to 127.0.0.1 → no server → "This site can't be reached"
 ```
 
 ---
@@ -718,11 +625,9 @@ server {
 
 ### Blocking Not Working — Website Still Opens
 
-This is the most common issue. Work through these steps in order:
-
 **Step 1: Check admin status**
 
-Open the web dashboard → Settings page. If "Administrator Privileges" shows **Limited**, restart the backend as Administrator.
+Open the web dashboard → Settings page. If "Administrator Privileges" shows **Not running as Admin**, close everything and re-run `start.bat` as administrator.
 
 **Step 2: Verify hosts file entry**
 
@@ -732,27 +637,27 @@ Get-Content "C:\Windows\System32\drivers\etc\hosts" | Select-String "youtube"
 
 If nothing shows → admin issue. If it shows `127.0.0.1 youtube.com` → proceed to Step 3.
 
-**Step 3: Test DNS resolution**
+**Step 3: Check firewall rules**
 
 ```powershell
-Resolve-DnsName -Name "www.youtube.com" | Select-Object Name, IPAddress
+netsh advfirewall firewall show rule name=all dir=out | Select-String "DPI-Block-Domain"
 ```
 
-If it shows `127.0.0.1` → hosts file works. If it shows a real IP → DNS is bypassing hosts file.
+If no rules → server not running as admin. If rules exist → proceed to Step 4.
 
-**Step 4: Test from PowerShell**
+**Step 4: Check DoH blocking**
 
 ```powershell
-Invoke-WebRequest -Uri "https://www.youtube.com" -TimeoutSec 5 -UseBasicParsing
+netsh advfirewall firewall show rule name=all dir=out | Select-String "DPI-Block-DoH"
 ```
 
-If this **fails** but the browser works → browser caching issue. Close ALL browser windows and reopen.
+If no DoH rules → restart server as admin. If DoH rules exist → browser may have cached DNS.
 
 **Step 5: Disable DNS over HTTPS in Chrome**
 
 1. Go to `chrome://settings/security`
 2. Turn **OFF** "Use secure DNS"
-3. Restart Chrome completely
+3. Close and reopen Chrome completely
 
 **Step 6: Flush everything**
 
@@ -761,10 +666,6 @@ ipconfig /flushdns
 ```
 
 Then in Chrome: open `chrome://net-internals/#dns` → click **Clear host cache**, then close and reopen Chrome.
-
-**Step 7: Try a different browser**
-
-Test in Edge or Firefox. If it's blocked in one browser but not another → browser-specific caching.
 
 ### Port 3001 Already in Use
 
@@ -793,91 +694,25 @@ cd ../frontend && rm -rf node_modules package-lock.json && npm install
 3. Open browser F12 → Console tab for errors
 4. Try rebuilding: `cd frontend && npm run build`
 
-### DPI Engine Not Found
-
-Build the C++ engine:
-```powershell
-g++ -std=c++17 -pthread -O2 -I include -o dpi_engine.exe src/dpi_mt.cpp src/pcap_reader.cpp src/packet_parser.cpp src/sni_extractor.cpp src/types.cpp
-```
-
-Or update the path in `backend/.env`:
-```
-DPI_BINARY=..\dpi_engine.exe
-```
-
----
-
-## 13. Technical Background
-
-### How DPI Extracts Domains from HTTPS
-
-Even though HTTPS encrypts the content, the **TLS Client Hello** (the very first encrypted message) contains the domain name in plaintext via the **Server Name Indication (SNI)** extension. This is by design — the server needs to know which certificate to present.
-
-```
-Browser                              Server
-  │                                    │
-  │ ── TCP SYN ──────────────────────► │
-  │ ◄── TCP SYN-ACK ───────────────── │
-  │ ── TCP ACK ──────────────────────► │
-  │                                    │
-  │ ── TLS Client Hello ────────────► │
-  │    SNI: www.youtube.com (visible) │
-  │                                    │
-  │ ◄── TLS Server Hello ──────────── │
-  │ ◄── Certificate ───────────────── │
-  │                                    │
-  │ ═══ Encrypted data ═══════════════│
-```
-
-The DPI engine reads this SNI field to identify the destination domain without decrypting anything.
-
-### Hosts File vs DNS over HTTPS
-
-The hosts file works at the OS level — when any application resolves a domain, Windows checks the hosts file first. However, **DNS over HTTPS (DoH)** bypasses this by resolving domains through encrypted HTTPS connections to Cloudflare/Google DNS, ignoring the hosts file entirely.
-
-| Method | Hosts File Works? | Notes |
-|--------|-------------------|-------|
-| Standard DNS | Yes | Default for most setups |
-| DNS over HTTPS (DoH) | No | Chrome/Firefox feature, must be disabled |
-| VPN | No | VPN handles DNS separately |
-| Standard browser (no DoH) | Yes | Works after DNS flush |
-
-### Blocking Methods Comparison
-
-| Method | Blocks At | Bypassable By | Requires Admin |
-|--------|-----------|---------------|----------------|
-| Hosts file | DNS resolution | VPN, DoH, cached IP | Yes |
-| Windows Firewall | Network packets | VPN (different routing) | Yes |
-| DPI Analysis | N/A (reporting only) | N/A | No |
-
 ---
 
 ## Commands Quick Reference
 
-### First-Time Setup (run once)
-```powershell
-# In Admin PowerShell:
-cd "C:\Projects Placements\DPI-Modified\Packet_analyzer\backend"
-npm install
-
-cd ..\frontend
-npm install
-npm run build
+### Start the Application
+```
+Right-click start.bat → Run as administrator
 ```
 
-### Start the Application (every time)
+### Manual Start
 ```powershell
-# Terminal 1 — Admin PowerShell:
+# Terminal 1 (Admin):
 cd "C:\Projects Placements\DPI-Modified\Packet_analyzer\backend"
 node src/server.js
 
-# Terminal 2 — Regular PowerShell:
+# Terminal 2 (Regular):
 cd "C:\Projects Placements\DPI-Modified\Packet_analyzer\frontend"
 npm run dev
 ```
-
-### Or use the shortcut
-Double-click `start.bat` (right-click → Run as Administrator)
 
 ### Flush DNS after adding rules
 ```powershell
@@ -895,6 +730,11 @@ Error = blocking works. Response = blocking not working.
 Get-Content "C:\Windows\System32\drivers\etc\hosts" | Select-String "youtube"
 ```
 
+### Check firewall rules
+```powershell
+netsh advfirewall firewall show rule name=all dir=out | Select-String "DPI-Block"
+```
+
 ---
 
-&copy; 2026 DPI Website Blocker — A deep packet inspection based website blocking system for Windows.
+&copy; 2026 SCOUT — A deep packet inspection based website blocking system for Windows.
