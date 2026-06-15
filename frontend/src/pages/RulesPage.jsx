@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, ToggleLeft, ToggleRight, Trash2, Loader2 } from 'lucide-react';
-import { getRules, addRule, toggleRule, deleteRule } from '../api/client';
+import { Plus, ToggleLeft, ToggleRight, Trash2, Search, X, AlertTriangle } from 'lucide-react';
+import { getRules, addRule, toggleRule, deleteRule, getStatus } from '../api/client';
+import { useToast } from '../components/Toast';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { SkeletonPage } from '../components/Skeleton';
 
 const PRESET_APPS = [
   { name: 'YouTube', domain: 'youtube.com' },
@@ -20,23 +23,24 @@ const PRESET_APPS = [
 export default function RulesPage() {
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const [newDomain, setNewDomain] = useState('');
   const [newIp, setNewIp] = useState('');
   const [newPort, setNewPort] = useState('');
-  const [message, setMessage] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(true);
+  const { addToast } = useToast();
 
   useEffect(() => { load(); }, []);
 
   async function load() {
     try {
-      const r = await getRules();
+      const [r, s] = await Promise.all([getRules(), getStatus()]);
       setRules(r);
-    } catch {} finally { setLoading(false); }
-  }
-
-  function showMsg(text, type = 'success') {
-    setMessage({ text, type });
-    setTimeout(() => setMessage(null), 3000);
+      setIsAdmin(s.admin);
+    }
+    catch { addToast('Failed to load rules', 'error'); }
+    finally { setLoading(false); }
   }
 
   async function handleAdd(type, value) {
@@ -44,196 +48,220 @@ export default function RulesPage() {
     try {
       const res = await addRule(type, value);
       if (res.success) {
-        showMsg(`Blocked ${value}`);
+        addToast(`Blocked ${value}`, 'success');
         setNewDomain(''); setNewIp(''); setNewPort('');
         load();
       } else {
-        showMsg(res.error || 'Failed to add rule', 'error');
+        addToast(res.error || 'Failed to add rule', 'error');
       }
-    } catch (err) {
-      showMsg(err.message, 'error');
-    }
+    } catch (err) { addToast(err.message, 'error'); }
   }
 
   async function handleToggle(id, current) {
     try {
       await toggleRule(id, !current);
+      addToast(current ? 'Rule disabled' : 'Rule enabled', 'info');
       load();
-    } catch {}
+    } catch { addToast('Failed to toggle rule', 'error'); }
   }
 
-  async function handleDelete(id, value) {
+  function handleDeleteClick(rule) {
+    setConfirm(rule);
+  }
+
+  async function handleConfirmDelete() {
+    if (!confirm) return;
     try {
-      await deleteRule(id);
-      showMsg(`Removed ${value}`);
+      await deleteRule(confirm.id);
+      addToast(`Removed ${confirm.value}`, 'success');
       load();
-    } catch {}
+    } catch { addToast('Failed to delete rule', 'error'); }
+    setConfirm(null);
   }
 
   async function handlePreset(app) {
+    const exists = rules.some(r => r.type === 'domain' && r.value === app.domain && r.enabled);
+    if (exists) { addToast(`${app.name} is already blocked`, 'error'); return; }
     try {
-      const exists = rules.some(r => r.type === 'domain' && r.value === app.domain && r.enabled);
-      if (exists) {
-        showMsg(`${app.name} is already blocked`, 'error');
-        return;
-      }
       const res = await addRule('domain', app.domain, 'preset');
-      if (res.success) {
-        showMsg(`Blocking ${app.name}`);
-        load();
-      } else {
-        showMsg(res.error || 'Failed to block (needs admin)', 'error');
-      }
-    } catch (err) {
-      showMsg(err.message, 'error');
-    }
+      if (res.success) { addToast(`Blocking ${app.name}`, 'success'); load(); }
+      else addToast(res.error || 'Failed', 'error');
+    } catch (err) { addToast(err.message, 'error'); }
   }
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-    </div>
-  );
+  if (loading) return <SkeletonPage />;
 
-  const domainRules = rules.filter(r => r.type === 'domain');
-  const ipRules = rules.filter(r => r.type === 'ip');
-  const portRules = rules.filter(r => r.type === 'port');
+  const filtered = search
+    ? rules.filter(r => r.value.toLowerCase().includes(search.toLowerCase()))
+    : rules;
+
+  const domainRules = filtered.filter(r => r.type === 'domain');
+  const ipRules = filtered.filter(r => r.type === 'ip');
+  const portRules = filtered.filter(r => r.type === 'port');
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-xl font-bold">Blocking Rules</h1>
-        <p className="text-sm text-gray-500 mt-1">Manage domains, IPs, and ports to block on this device</p>
+    <div className="space-y-6 max-w-4xl page-enter">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Blocking Rules</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Manage domains, IPs, and ports to block</p>
+        </div>
       </div>
 
-      {message && (
-        <div className={`px-4 py-3 rounded-xl text-sm ${
-          message.type === 'error'
-            ? 'bg-red-900/30 border border-red-800 text-red-300'
-            : 'bg-green-900/30 border border-green-800 text-green-300'
-        }`}>
-          {message.text}
+      {!isAdmin && (
+        <div className="glass p-3 flex items-center gap-3 border border-amber-500/30" style={{ background: 'rgba(245, 158, 11, 0.08)' }}>
+          <AlertTriangle className="w-4 h-4 text-amber shrink-0" />
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Not running as admin — re-blocked sites may still open due to browser DNS caching. Run <code className="text-xs text-accent">start.bat</code> as admin for full protection.
+          </p>
         </div>
       )}
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-gray-400 mb-4">Quick Block — Popular Apps</h2>
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+        <input
+          className="input-glass pl-10 pr-10"
+          placeholder="Search rules..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Presets */}
+      <div className="glass p-5 page-enter stagger-1">
+        <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-secondary)' }}>Quick Block — Popular Apps</h2>
         <div className="flex flex-wrap gap-2">
           {PRESET_APPS.map(app => {
-            const blocked = domainRules.some(r => r.value === app.domain && r.enabled);
+            const blocked = rules.some(r => r.type === 'domain' && r.value === app.domain && r.enabled);
             return (
               <button
                 key={app.name}
                 onClick={() => handlePreset(app)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                  blocked
-                    ? 'bg-red-900/40 border-red-700 text-red-300 cursor-default'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'
-                }`}
                 disabled={blocked}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-all duration-200 ${
+                  blocked ? 'cursor-default' : 'hover:scale-105'
+                }`}
+                style={blocked ? {
+                  background: 'rgba(244, 63, 94, 0.15)',
+                  borderColor: 'rgba(244, 63, 94, 0.3)',
+                  color: '#f43f5e',
+                } : {
+                  background: 'var(--glass-bg)',
+                  borderColor: 'var(--glass-border)',
+                  color: 'var(--text-secondary)',
+                }}
               >
-                {blocked ? `${app.name} (Blocked)` : `Block ${app.name}`}
+                {blocked ? `${app.name} ✓` : `Block ${app.name}`}
               </button>
             );
           })}
         </div>
       </div>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-gray-400 mb-4">Domain Blocking (via Hosts File)</h2>
+      {/* Domains */}
+      <div className="glass p-5 page-enter stagger-2">
+        <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-secondary)' }}>Domain Blocking (Hosts File)</h2>
         <div className="flex gap-2 mb-4">
           <input
-            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+            className="input-glass flex-1"
             placeholder="example.com"
             value={newDomain}
             onChange={e => setNewDomain(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleAdd('domain', newDomain)}
           />
-          <button
-            onClick={() => handleAdd('domain', newDomain)}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-4 py-2 text-sm"
-          >
-            <Plus className="w-4 h-4" />
+          <button onClick={() => handleAdd('domain', newDomain)} className="btn-primary flex items-center gap-1">
+            <Plus className="w-4 h-4" /> Add
           </button>
         </div>
-        <RuleList rules={domainRules} onToggle={handleToggle} onDelete={handleDelete} />
+        <RuleList rules={domainRules} onToggle={handleToggle} onDelete={handleDeleteClick} />
       </div>
 
+      {/* IP + Port */}
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-400 mb-4">IP Blocking (via Firewall)</h2>
+        <div className="glass p-5 page-enter stagger-3">
+          <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-secondary)' }}>IP Blocking (Firewall)</h2>
           <div className="flex gap-2 mb-4">
             <input
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+              className="input-glass flex-1"
               placeholder="192.168.1.50"
               value={newIp}
               onChange={e => setNewIp(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd('ip', newIp)}
             />
-            <button
-              onClick={() => handleAdd('ip', newIp)}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-4 py-2 text-sm"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
+            <button onClick={() => handleAdd('ip', newIp)} className="btn-primary"><Plus className="w-4 h-4" /></button>
           </div>
-          <RuleList rules={ipRules} onToggle={handleToggle} onDelete={handleDelete} />
+          <RuleList rules={ipRules} onToggle={handleToggle} onDelete={handleDeleteClick} />
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-400 mb-4">Port Blocking (via Firewall)</h2>
+        <div className="glass p-5 page-enter stagger-4">
+          <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-secondary)' }}>Port Blocking (Firewall)</h2>
           <div className="flex gap-2 mb-4">
             <input
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+              className="input-glass flex-1"
               placeholder="443"
               type="number"
+              min="1"
+              max="65535"
               value={newPort}
               onChange={e => setNewPort(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd('port', newPort)}
             />
-            <button
-              onClick={() => handleAdd('port', newPort)}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-4 py-2 text-sm"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
+            <button onClick={() => handleAdd('port', newPort)} className="btn-primary"><Plus className="w-4 h-4" /></button>
           </div>
-          <RuleList rules={portRules} onToggle={handleToggle} onDelete={handleDelete} />
+          <RuleList rules={portRules} onToggle={handleToggle} onDelete={handleDeleteClick} />
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!confirm}
+        title="Delete Rule"
+        message={`Remove "${confirm?.value}"? This will unblock it on your system.`}
+        confirmLabel="Delete"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }
 
 function RuleList({ rules, onToggle, onDelete }) {
-  if (rules.length === 0) return <p className="text-gray-500 text-sm py-4 text-center">No rules yet</p>;
+  if (rules.length === 0) return (
+    <p className="text-sm py-4 text-center" style={{ color: 'var(--text-muted)' }}>No rules</p>
+  );
   return (
     <div className="space-y-1.5 max-h-64 overflow-y-auto">
       {rules.map(rule => (
         <div
           key={rule.id}
-          className={`flex items-center justify-between py-2 px-3 rounded-lg text-sm ${
-            rule.enabled ? 'bg-gray-800/50' : 'bg-gray-800/20 opacity-50'
-          }`}
+          className="flex items-center justify-between py-2 px-3 rounded-lg glass-hover"
+          style={{ opacity: rule.enabled ? 1 : 0.5 }}
         >
-          <span className={rule.enabled ? 'text-gray-200' : 'text-gray-500 line-through'}>
+          <span className="text-sm font-mono" style={{ color: rule.enabled ? 'var(--text-primary)' : 'var(--text-muted)', textDecoration: rule.enabled ? 'none' : 'line-through' }}>
             {rule.value}
-            {rule.category === 'ads' && <span className="text-xs text-gray-500 ml-2">(ads)</span>}
-            {rule.category === 'preset' && <span className="text-xs text-gray-500 ml-2">(preset)</span>}
+            {rule.category === 'ads' && <span className="text-xs ml-2 opacity-50">(ads)</span>}
+            {rule.category === 'preset' && <span className="text-xs ml-2 opacity-50">(preset)</span>}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => onToggle(rule.id, rule.enabled)}
-              className={`p-1 rounded transition-colors ${
-                rule.enabled ? 'text-green-400 hover:text-green-300' : 'text-gray-500 hover:text-gray-400'
-              }`}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ color: rule.enabled ? '#10b981' : 'var(--text-muted)' }}
               title={rule.enabled ? 'Disable' : 'Enable'}
             >
-              {rule.enabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+              {rule.enabled ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
             </button>
             <button
-              onClick={() => onDelete(rule.id, rule.value)}
-              className="p-1 rounded text-gray-500 hover:text-red-400 transition-colors"
+              onClick={() => onDelete(rule)}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ color: 'var(--text-muted)' }}
+              onMouseEnter={e => e.currentTarget.style.color = '#f43f5e'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
               title="Delete"
             >
               <Trash2 className="w-3.5 h-3.5" />

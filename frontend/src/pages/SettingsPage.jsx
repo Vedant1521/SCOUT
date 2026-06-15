@@ -1,115 +1,128 @@
 import { useState, useEffect } from 'react';
-import { Shield, Info, Terminal, Loader2, CheckCircle2, AlertTriangle, Copy } from 'lucide-react';
+import { Shield, Info, Terminal, CheckCircle2, AlertTriangle, Globe, Wifi, FileSearch, Copy } from 'lucide-react';
 import { getStatus } from '../api/client';
+import { useToast } from '../components/Toast';
+import { SkeletonPage } from '../components/Skeleton';
 
 export default function SettingsPage() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const { addToast } = useToast();
 
   useEffect(() => {
-    getStatus().then(s => setStatus(s)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    getStatus().then(s => setStatus(s)).catch(() => addToast('Failed to load status', 'error')).finally(() => setLoading(false));
+  }, [addToast]);
 
   function copy(text) {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      addToast('Copied to clipboard', 'info');
     });
   }
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-    </div>
-  );
+  if (loading) return <SkeletonPage />;
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-3xl page-enter">
+      {!status?.admin && (
+        <div className="glass p-4 border border-amber-500/30 page-enter" style={{ background: 'rgba(245, 158, 11, 0.08)' }}>
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-semibold text-amber">Administrator Privileges Required</h3>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+                Without admin rights, blocked sites may still open in your browser after being re-added.
+                The browser caches DNS lookups and only a firewall rule (which requires admin) can block them at the IP level.
+              </p>
+              <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>
+                <strong>Fix:</strong> Close this app, right-click <code className="text-xs text-accent">start.bat</code> and choose "Run as administrator".
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div>
-        <h1 className="text-xl font-bold">Settings</h1>
-        <p className="text-sm text-gray-500 mt-1">System status and configuration</p>
+        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Settings</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>System status and configuration</p>
       </div>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-gray-400 mb-4 flex items-center gap-2">
+      <div className="glass p-5 page-enter stagger-1">
+        <h2 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
           <Shield className="w-4 h-4" /> System Status
         </h2>
-        <div className="space-y-3">
-          <StatusRow
-            label="Administrator Privileges"
-            ok={status?.admin}
-            okText="Running as Admin"
-            failText="Not running as Admin — blocking limited"
-          />
-          <StatusRow
-            label="Hosts File Access"
-            ok={status?.hostsFile}
-            okText="Writable — domain blocking active"
-            failText="Not writable — domain blocking unavailable"
-          />
-          <StatusRow
-            label="Windows Firewall Access"
-            ok={status?.firewall}
-            okText="Accessible — IP/port blocking active"
-            failText="Not accessible — IP/port blocking unavailable"
-          />
-          <div className="flex items-center justify-between py-2">
-            <span className="text-sm text-gray-400">Domains Currently Blocked</span>
-            <span className="text-sm font-mono text-gray-200">{status?.blockedDomains?.length || 0}</span>
+        <div className="space-y-1">
+          <StatusRow label="Administrator Privileges" ok={status?.admin} okText="Running as Admin" failText="Not running as Admin" />
+          <StatusRow label="Hosts File Access" ok={status?.hostsFile} okText="Writable" failText="Not writable" />
+          <StatusRow label="Windows Firewall" ok={status?.firewall} okText="Accessible" failText="Not accessible" />
+          <div className="flex items-center justify-between py-2.5 px-3 rounded-lg" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Domains Blocked</span>
+            <span className="text-sm font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>{status?.blockedDomains?.length || 0}</span>
           </div>
-          <div className="flex items-center justify-between py-2">
-            <span className="text-sm text-gray-400">Firewall Rules Active</span>
-            <span className="text-sm font-mono text-gray-200">{status?.firewallRules?.length || 0}</span>
+          <div className="flex items-center justify-between py-2.5 px-3 rounded-lg">
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Firewall Rules</span>
+            <span className="text-sm font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>{status?.firewallRules?.length || 0}</span>
           </div>
         </div>
       </div>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-gray-400 mb-4 flex items-center gap-2">
-          <Info className="w-4 h-4" /> How to Run as Administrator
+      <div className="glass p-5 page-enter stagger-2">
+        <h2 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+          <Terminal className="w-4 h-4" /> Run as Administrator
         </h2>
-        <div className="space-y-3 text-sm text-gray-300">
-          <p>For full blocking capabilities (hosts file + firewall), run the backend with admin privileges:</p>
-          <div className="bg-gray-950 rounded-lg p-3 font-mono text-sm relative">
-            <code># Open PowerShell as Administrator, then:<br/>cd {process.cwd()}<br/>cd backend<br/>node src/server.js</code>
+        <div className="space-y-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <p>For full blocking, restart the backend with admin privileges:</p>
+          <div className="relative rounded-xl p-3 font-mono text-xs" style={{ background: 'rgba(0,0,0,0.3)', color: 'var(--text-primary)' }}>
+            <pre className="whitespace-pre-wrap">{'# Open PowerShell as Administrator, then:\ncd "C:\\Projects Placements\\DPI-Modified\\Packet_analyzer\\backend"\nnode src/server.js'}</pre>
             <button
-              onClick={() => copy(`# Open PowerShell as Administrator, then:\ncd ${process.cwd()}\ncd backend\nnode src/server.js`)}
-              className="absolute top-2 right-2 text-gray-500 hover:text-gray-300"
+              onClick={() => copy('cd "C:\\Projects Placements\\DPI-Modified\\Packet_analyzer\\backend"\nnode src/server.js')}
+              className="absolute top-2 right-2 p-1.5 rounded-lg transition-colors"
+              style={{ background: 'var(--glass-bg)', color: 'var(--text-muted)' }}
             >
-              {copied ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+              {copied ? <CheckCircle2 className="w-4 h-4 text-emerald" /> : <Copy className="w-4 h-4" />}
             </button>
           </div>
-          <p className="text-gray-400">Or run this shortcut as Administrator once to set it up:</p>
-          <div className="bg-gray-950 rounded-lg p-3 font-mono text-xs text-gray-400">
-            <Terminal className="w-3.5 h-3.5 inline mr-1" />
-            npm run dev (from project root)
-          </div>
         </div>
       </div>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-gray-400 mb-4">How Blocking Works</h2>
-        <div className="space-y-3 text-sm text-gray-400">
+      <div className="glass p-5 page-enter stagger-3">
+        <h2 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+          <Info className="w-4 h-4" /> How Blocking Works
+        </h2>
+        <div className="space-y-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
           <div className="flex items-start gap-3">
-            <Globe className="w-4 h-4 text-indigo-400 mt-0.5 shrink-0" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'rgba(6, 182, 212, 0.15)' }}>
+              <Globe className="w-4 h-4 text-accent" />
+            </div>
             <div>
-              <span className="text-gray-200 font-medium">Domain Blocking</span>
-              <p>Adds entries to Windows hosts file (<code className="text-xs text-indigo-400">C:\Windows\System32\drivers\etc\hosts</code>), mapping blocked domains to <code className="text-xs text-indigo-400">0.0.0.0</code>. This prevents DNS resolution.</p>
+              <span className="font-medium" style={{ color: 'var(--text-primary)' }}>Domain Blocking</span>
+              <p className="mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Maps blocked domains to <code className="text-xs text-accent">127.0.0.1</code> in the hosts file. Both the bare domain and <code className="text-xs text-accent">www.</code> subdomain are blocked automatically.
+              </p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <Wifi className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'rgba(139, 92, 246, 0.15)' }}>
+              <Wifi className="w-4 h-4 text-purple" />
+            </div>
             <div>
-              <span className="text-gray-200 font-medium">IP / Port Blocking</span>
-              <p>Creates outbound Windows Firewall rules using <code className="text-xs text-indigo-400">netsh advfirewall</code> to block traffic to specific IPs or ports.</p>
+              <span className="font-medium" style={{ color: 'var(--text-primary)' }}>IP / Port Blocking</span>
+              <p className="mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Creates outbound Windows Firewall rules via <code className="text-xs text-accent">netsh advfirewall</code> to drop packets.
+              </p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <FileSearch className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'rgba(16, 185, 129, 0.15)' }}>
+              <FileSearch className="w-4 h-4 text-emerald" />
+            </div>
             <div>
-              <span className="text-gray-200 font-medium">DPI Analysis</span>
-              <p>Upload .pcap captures to the DPI engine which inspects TLS SNI, HTTP Host headers, and DNS queries to classify traffic and test blocking rules before applying them live.</p>
+              <span className="font-medium" style={{ color: 'var(--text-primary)' }}>DPI Analysis</span>
+              <p className="mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Inspects TLS SNI, HTTP Host headers, and DNS queries in .pcap captures to classify traffic and test rules.
+              </p>
             </div>
           </div>
         </div>
@@ -120,15 +133,11 @@ export default function SettingsPage() {
 
 function StatusRow({ label, ok, okText, failText }) {
   return (
-    <div className="flex items-center justify-between py-2">
-      <span className="text-sm text-gray-400">{label}</span>
+    <div className="flex items-center justify-between py-2.5 px-3 rounded-lg" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{label}</span>
       <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-300">{ok ? okText : failText}</span>
-        {ok ? (
-          <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-        ) : (
-          <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0" />
-        )}
+        <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{ok ? okText : failText}</span>
+        {ok ? <CheckCircle2 className="w-4 h-4 text-emerald shrink-0" /> : <AlertTriangle className="w-4 h-4 text-amber shrink-0" />}
       </div>
     </div>
   );

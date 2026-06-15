@@ -1,11 +1,26 @@
-export default function MetricCard({ title, value, subtitle, icon }) {
+export default function MetricCard({ title, value, subtitle, icon, color = 'emerald' }) {
+  const accents = {
+    emerald: '#10b981',
+    rose: '#f43f5e',
+    purple: '#8b5cf6',
+    amber: '#f59e0b',
+    cyan: '#06b6d4',
+  };
+
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex items-center gap-4">
-      {icon && <div className="text-indigo-400">{icon}</div>}
-      <div>
-        <div className="text-sm text-gray-400">{title}</div>
-        <div className="text-2xl font-bold">{value ?? '—'}</div>
-        {subtitle && <div className="text-xs text-gray-500">{subtitle}</div>}
+    <div className="glass glass-hover p-5">
+      <div className="flex items-center gap-3">
+        <div
+          className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: `${accents[color]}12`, color: accents[color] }}
+        >
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <div className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{title}</div>
+          <div className="text-xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>{value ?? '—'}</div>
+          {subtitle && <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{subtitle}</div>}
+        </div>
       </div>
     </div>
   );

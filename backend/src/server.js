@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url';
 import { Blocker } from './services/blocker.js';
 import { getRules, addRule, updateRule, deleteRule, getLogs, addLog } from './services/database.js';
 import analyzeRouter from './routes/analyze.js';
+import authRouter, { authMiddleware } from './routes/auth.js';
+import profilesRouter from './routes/profiles.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -15,11 +17,14 @@ const blocker = new Blocker();
 app.use(cors());
 app.use(express.json());
 
-app.use('/api', analyzeRouter);
+app.use('/api/auth', authRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+app.use('/api', analyzeRouter);
+app.use('/api/profiles', profilesRouter);
 
 app.get('/api/status', async (req, res) => {
   try {
@@ -124,6 +129,9 @@ async function unapplyRule(rule) {
     case 'port': await blocker.unblockPort(rule.value); break;
   }
 }
+
+app.locals.applyRule = applyRule;
+app.locals.unapplyRule = unapplyRule;
 
 app.listen(PORT, () => {
   console.log(`DPI Blocker backend running on http://localhost:${PORT}`);
